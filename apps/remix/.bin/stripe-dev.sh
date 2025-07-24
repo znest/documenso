@@ -74,4 +74,4 @@ if [ -z "$NEXT_PRIVATE_STRIPE_WEBHOOK_SECRET" ]; then
 fi
 
 echo "[INFO]: Starting Stripe webhook listener..."
-stripe listen --api-key "$NEXT_PRIVATE_STRIPE_API_KEY" --forward-to http://localhost:3000/api/stripe/webhook
+stripe listen --api-key "$NEXT_PRIVATE_STRIPE_API_KEY" --forward-to http://localhost:4000/api/stripe/webhook

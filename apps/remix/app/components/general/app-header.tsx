@@ -35,7 +35,7 @@ export const Header = ({ className, ...props }: HeaderProps) => {
       readStatus: ReadStatus.NOT_OPENED,
     },
     {
-      // refetchInterval: 30000, // Refetch every 30 seconds
+      // refetchInterval: 40000, // Refetch every 30 seconds
     },
   );
 

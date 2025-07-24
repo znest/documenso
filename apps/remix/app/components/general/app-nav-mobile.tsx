@@ -32,7 +32,7 @@ export const AppNavMobile = ({ isMenuOpen, onMenuOpenChange }: AppNavMobileProps
       readStatus: ReadStatus.NOT_OPENED,
     },
     {
-      // refetchInterval: 30000, // Refetch every 30 seconds
+      // refetchInterval: 40000, // Refetch every 30 seconds
     },
   );
 

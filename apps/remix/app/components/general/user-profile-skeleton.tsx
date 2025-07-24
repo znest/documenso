@@ -16,7 +16,7 @@ export type UserProfileSkeletonProps = {
 };
 
 export const UserProfileSkeleton = ({ className, user, rows = 2 }: UserProfileSkeletonProps) => {
-  const baseUrl = new URL(NEXT_PUBLIC_WEBAPP_URL() ?? 'http://localhost:3000');
+  const baseUrl = new URL(NEXT_PUBLIC_WEBAPP_URL() ?? 'http://localhost:4000');
 
   return (
     <div

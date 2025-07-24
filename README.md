@@ -133,7 +133,7 @@ npm run d
 
 #### Access Points for Your Application
 
-1. **App** - http://localhost:3000
+1. **App** - http://localhost:4000
 2. **Incoming Mail Access** - http://localhost:9000
 3. **Database Connection Details**
 
@@ -173,7 +173,7 @@ git clone https://github.com/<your-username>/documenso
 
 6. Run `npm run dev` in the root directory to start
 
-7. Register a new user at http://localhost:3000/signup
+7. Register a new user at http://localhost:4000/signup
 
 ---
 
@@ -256,13 +256,13 @@ cd apps/remix
 npm run start
 ```
 
-This will start the server on `localhost:3000`. For now, any reverse proxy can then do the frontend and SSL termination.
+This will start the server on `localhost:4000`. For now, any reverse proxy can then do the frontend and SSL termination.
 
-> If you want to run with another port than 3000, you can start the application with `next -p <ANY PORT>` from the `apps/web` folder.
+> If you want to run with another port than 4000, you can start the application with `next -p <ANY PORT>` from the `apps/web` folder.
 
 ### Run as a service
 
-You can use a systemd service file to run the app. Here is a simple example of the service running on port 3500 (using 3000 by default):
+You can use a systemd service file to run the app. Here is a simple example of the service running on port 3500 (using 4000 by default):
 
 ```bash
 [Unit]
