@@ -7,7 +7,7 @@ import { useLingui } from '@lingui/react';
 import { Trans } from '@lingui/react/macro';
 import { DocumentSigningOrder, RecipientRole } from '@prisma/client';
 import { motion } from 'framer-motion';
-import { GripVertical, HelpCircle, Plus, Trash } from 'lucide-react';
+import { GripVertical, Plus, Trash } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import type { Control } from 'react-hook-form';
 import { useFieldArray, useFormContext, useFormState } from 'react-hook-form';
@@ -15,7 +15,6 @@ import { useFieldArray, useFormContext, useFormState } from 'react-hook-form';
 import { RecipientRoleSelect } from '@documenso/ui/components/recipient/recipient-role-select';
 import { cn } from '@documenso/ui/lib/utils';
 import { Button } from '@documenso/ui/primitives/button';
-import { Checkbox } from '@documenso/ui/primitives/checkbox';
 import {
   FormControl,
   FormField,
@@ -24,7 +23,6 @@ import {
   FormMessage,
 } from '@documenso/ui/primitives/form/form';
 import { Input } from '@documenso/ui/primitives/input';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@documenso/ui/primitives/tooltip';
 
 import { useConfigureDocument } from './configure-document-context';
 import type { TConfigureEmbedFormSchema } from './configure-document-view.types';
@@ -154,7 +152,7 @@ export const ConfigureDocumentRecipients = ({
       <p className="text-muted-foreground mb-6 text-sm">
         <Trans>Add signers and configure signing preferences</Trans>
       </p>
-
+      {/* 
       <FormField
         control={control}
         name="meta.signingOrder"
@@ -223,7 +221,7 @@ export const ConfigureDocumentRecipients = ({
             </div>
           </FormItem>
         )}
-      />
+      /> */}
 
       <DragDropContext
         onDragEnd={onDragEnd}

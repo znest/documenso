@@ -18,7 +18,6 @@ import {
 } from '@documenso/ui/primitives/form/form';
 import { Input } from '@documenso/ui/primitives/input';
 
-import { ConfigureDocumentAdvancedSettings } from './configure-document-advanced-settings';
 import { useConfigureDocument } from './configure-document-context';
 import { ConfigureDocumentRecipients } from './configure-document-recipients';
 import { ConfigureDocumentUpload } from './configure-document-upload';
@@ -98,6 +97,7 @@ export const ConfigureDocumentView = ({
 
       <Form {...form}>
         <div className="flex flex-col space-y-8">
+          {!disableUpload && <ConfigureDocumentUpload isSubmitting={isSubmitting} />}
           <div>
             <FormField
               control={control}
@@ -116,9 +116,8 @@ export const ConfigureDocumentView = ({
             />
           </div>
 
-          {!disableUpload && <ConfigureDocumentUpload isSubmitting={isSubmitting} />}
           <ConfigureDocumentRecipients control={control} isSubmitting={isSubmitting} />
-          <ConfigureDocumentAdvancedSettings control={control} isSubmitting={isSubmitting} />
+          {/* <ConfigureDocumentAdvancedSettings control={control} isSubmitting={isSubmitting} /> */}
 
           <div className="flex justify-end">
             <Button

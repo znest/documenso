@@ -129,10 +129,10 @@ export default function EmbeddingAuthoringTemplateCreatePage() {
   useLayoutEffect(() => {
     try {
       const hash = window.location.hash.slice(1);
-
-      const result = ZBaseEmbedAuthoringSchema.safeParse(
-        JSON.parse(decodeURIComponent(atob(hash))),
-      );
+      const result = ZBaseEmbedAuthoringSchema.safeParse({
+        token: window.location.search.split('token=')[1],
+        ...JSON.parse(decodeURIComponent(atob(hash))),
+      });
 
       if (!result.success) {
         return;
