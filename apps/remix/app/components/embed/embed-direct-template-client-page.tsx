@@ -32,7 +32,6 @@ import { PDFViewer } from '@documenso/ui/primitives/pdf-viewer';
 import { SignaturePadDialog } from '@documenso/ui/primitives/signature-pad/signature-pad-dialog';
 import { useToast } from '@documenso/ui/primitives/use-toast';
 
-import { BrandingLogo } from '~/components/general/branding-logo';
 import { ZDirectTemplateEmbedDataSchema } from '~/types/embed-direct-template-schema';
 import { injectCss } from '~/utils/css-vars';
 
@@ -458,13 +457,6 @@ export const EmbedDirectTemplateClientPage = ({
           onUnsignField={onUnsignField}
         />
       </div>
-
-      {!hidePoweredBy && (
-        <div className="bg-primary text-primary-foreground fixed bottom-0 left-0 z-40 rounded-tr px-2 py-1 text-xs font-medium opacity-60 hover:opacity-100">
-          <span>Powered by</span>
-          <BrandingLogo className="ml-2 inline-block h-[14px]" />
-        </div>
-      )}
     </div>
   );
 };
