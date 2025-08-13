@@ -91,7 +91,7 @@ COPY --from=builder /app/out/package-lock.json ./package-lock.json
 
 COPY --from=builder /app/lingui.config.ts ./lingui.config.ts
 
-RUN npm ci --unsafe-perm
+RUN npm ci --unsafe-perm --cache /root/.npm
 
 # Then copy all the source code (as it changes more often)
 COPY --from=builder /app/out/full/ .
@@ -145,12 +145,13 @@ WORKDIR /app
 
 # Set npm cache directory to user's home
 ENV NPM_CONFIG_CACHE=/app/.npm
+ENV NPM_CONFIG_PREFIX=/app/.npm
 
 COPY --from=builder --chown=nodejs:nodejs /app/out/json/ .
 # Copy the tailwind config files across
 COPY --from=builder --chown=nodejs:nodejs /app/out/full/packages/tailwind-config ./packages/tailwind-config
 
-RUN npm ci --only=production --unsafe-perm
+RUN npm ci --only=production --unsafe-perm --cache /app/.npm
 
 # Automatically leverage output traces to reduce image size
 # https://nodejs.org/docs/advanced-features/output-file-tracing
