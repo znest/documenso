@@ -34,6 +34,8 @@ RUN apk add --no-cache libc6-compat
 RUN apk add --no-cache jq
 # Required for node_modules/aws-crt
 RUN apk add --no-cache make cmake g++ openssl bash
+# Required for Playwright browsers
+RUN apk add --no-cache chromium nss freetype freetype-dev harfbuzz ca-certificates
 
 WORKDIR /app
 
@@ -81,6 +83,9 @@ RUN turbo run build --filter=@documenso/remix...
 #     RUNNER CONTAINER    #
 ###########################
 FROM base AS runner
+
+# Required for Playwright browsers to run
+RUN apk add --no-cache chromium nss freetype freetype-dev harfbuzz ca-certificates
 
 ENV HUSKY 0
 ENV DOCKER_OUTPUT 1
