@@ -68,6 +68,7 @@ WORKDIR /app
 ENV HUSKY 0
 ENV DOCKER_OUTPUT 1
 ENV NEXT_TELEMETRY_DISABLED 1
+ENV NPM_CONFIG_CACHE=/root/.npm
 
 # Encryption keys
 ARG NEXT_PRIVATE_ENCRYPTION_KEY="CAFEBABE"
@@ -138,6 +139,9 @@ RUN adduser --system --uid 1001 nodejs
 USER nodejs
 
 WORKDIR /app
+
+# Set npm cache directory to user's home
+ENV NPM_CONFIG_CACHE=/home/nodejs/.npm
 
 COPY --from=builder --chown=nodejs:nodejs /app/out/json/ .
 # Copy the tailwind config files across
