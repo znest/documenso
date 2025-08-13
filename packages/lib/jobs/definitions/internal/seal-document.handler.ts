@@ -245,45 +245,50 @@ export const run = async ({
   }
 
   await io.runTask('update-document', async () => {
-    await prisma.$transaction(async (tx) => {
-      const newData = await tx.documentData.findFirstOrThrow({
-        where: {
-          id: newDataId,
-        },
-      });
-
-      await tx.document.update({
-        where: {
-          id: document.id,
-        },
-        data: {
-          status: isRejected ? DocumentStatus.REJECTED : DocumentStatus.COMPLETED,
-          completedAt: new Date(),
-        },
-      });
-
-      await tx.documentData.update({
-        where: {
-          id: documentData.id,
-        },
-        data: {
-          data: newData.data,
-        },
-      });
-
-      await tx.documentAuditLog.create({
-        data: createDocumentAuditLogData({
-          type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_COMPLETED,
-          documentId: document.id,
-          requestMetadata,
-          user: null,
-          data: {
-            transactionId: nanoid(),
-            ...(isRejected ? { isRejected: true, rejectionReason: rejectionReason } : {}),
+    await prisma.$transaction(
+      async (tx) => {
+        const newData = await tx.documentData.findFirstOrThrow({
+          where: {
+            id: newDataId,
           },
-        }),
-      });
-    });
+        });
+
+        await tx.document.update({
+          where: {
+            id: document.id,
+          },
+          data: {
+            status: isRejected ? DocumentStatus.REJECTED : DocumentStatus.COMPLETED,
+            completedAt: new Date(),
+          },
+        });
+
+        await tx.documentData.update({
+          where: {
+            id: documentData.id,
+          },
+          data: {
+            data: newData.data,
+          },
+        });
+
+        await tx.documentAuditLog.create({
+          data: createDocumentAuditLogData({
+            type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_COMPLETED,
+            documentId: document.id,
+            requestMetadata,
+            user: null,
+            data: {
+              transactionId: nanoid(),
+              ...(isRejected ? { isRejected: true, rejectionReason: rejectionReason } : {}),
+            },
+          }),
+        });
+      },
+      {
+        timeout: 30000,
+      },
+    );
   });
 
   await io.runTask('send-completed-email', async () => {
