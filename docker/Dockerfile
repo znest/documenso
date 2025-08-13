@@ -146,6 +146,8 @@ WORKDIR /app
 # Set npm cache directory to user's home
 ENV NPM_CONFIG_CACHE=/app/.npm
 ENV NPM_CONFIG_PREFIX=/app/.npm
+# Set Playwright cache directory
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
 
 COPY --from=builder --chown=nodejs:nodejs /app/out/json/ .
 # Copy the tailwind config files across
@@ -163,7 +165,7 @@ COPY --from=installer --chown=nodejs:nodejs /app/packages/prisma/schema.prisma .
 COPY --from=installer --chown=nodejs:nodejs /app/packages/prisma/migrations ./packages/prisma/migrations
 
 # Install Playwright browsers directly in runner stage
-RUN npx playwright install
+RUN npx playwright install --with-deps
 
 # Generate the prisma client again
 RUN npx prisma generate --schema ./packages/prisma/schema.prisma
