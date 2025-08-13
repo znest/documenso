@@ -67,9 +67,6 @@ COPY --from=builder /app/lingui.config.ts ./lingui.config.ts
 
 RUN npm ci
 
-# Install Playwright browsers
-RUN npx playwright install
-
 # Then copy all the source code (as it changes more often)
 COPY --from=builder /app/out/full/ .
 # Finally copy the turbo.json file so that we can run turbo commands
@@ -113,8 +110,8 @@ COPY --from=installer --chown=nodejs:nodejs /app/apps/remix/public ./apps/remix/
 COPY --from=installer --chown=nodejs:nodejs /app/packages/prisma/schema.prisma ./packages/prisma/schema.prisma
 COPY --from=installer --chown=nodejs:nodejs /app/packages/prisma/migrations ./packages/prisma/migrations
 
-# Copy Playwright browsers from installer stage
-COPY --from=installer --chown=nodejs:nodejs /root/.cache/ms-playwright /home/nodejs/.cache/ms-playwright
+# Install Playwright browsers directly in runner stage
+RUN npx playwright install
 
 # Generate the prisma client again
 RUN npx prisma generate --schema ./packages/prisma/schema.prisma
