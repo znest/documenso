@@ -164,8 +164,8 @@ COPY --from=installer --chown=nodejs:nodejs /app/apps/remix/public ./apps/remix/
 COPY --from=installer --chown=nodejs:nodejs /app/packages/prisma/schema.prisma ./packages/prisma/schema.prisma
 COPY --from=installer --chown=nodejs:nodejs /app/packages/prisma/migrations ./packages/prisma/migrations
 
-# Install Playwright browsers directly in runner stage
-RUN npx playwright install --with-deps
+# Install Playwright browsers directly in runner stage (no --with-deps needed)
+RUN npx playwright install
 
 # Generate the prisma client again
 RUN npx prisma generate --schema ./packages/prisma/schema.prisma
