@@ -136,12 +136,15 @@ ENV DOCKER_OUTPUT 1
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nodejs
 
+# Create and set permissions for nodejs user home directory
+RUN mkdir -p /home/nodejs && chown -R nodejs:nodejs /home/nodejs
+
 USER nodejs
 
 WORKDIR /app
 
 # Set npm cache directory to user's home
-ENV NPM_CONFIG_CACHE=/home/nodejs/.npm
+ENV NPM_CONFIG_CACHE=/app/.npm
 
 COPY --from=builder --chown=nodejs:nodejs /app/out/json/ .
 # Copy the tailwind config files across
