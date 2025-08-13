@@ -1,9 +1,11 @@
 ###########################
 #     BASE CONTAINER      #
 ###########################
-FROM node:22-alpine3.20 AS base
+FROM node:22-slim AS base
 
-RUN apk add --no-cache openssl
+RUN apt-get update && apt-get install -y \
+    openssl \
+    && rm -rf /var/lib/apt/lists/*
 
 
 ###########################
@@ -29,13 +31,34 @@ RUN turbo prune --scope=@documenso/remix --docker
 ###########################
 FROM base AS installer
 
-# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
-RUN apk add --no-cache libc6-compat
-RUN apk add --no-cache jq
-# Required for node_modules/aws-crt
-RUN apk add --no-cache make cmake g++ openssl bash
-# Required for Playwright browsers
-RUN apk add --no-cache chromium nss freetype freetype-dev harfbuzz ca-certificates
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    libc6 \
+    jq \
+    make \
+    cmake \
+    g++ \
+    openssl \
+    bash \
+    ca-certificates \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libatspi2.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libxss1 \
+    libxtst6 \
+    xvfb \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -82,7 +105,26 @@ RUN turbo run build --filter=@documenso/remix...
 FROM base AS runner
 
 # Required for Playwright browsers to run
-RUN apk add --no-cache chromium nss freetype freetype-dev harfbuzz ca-certificates
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libatspi2.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libxss1 \
+    libxtst6 \
+    xvfb \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV HUSKY 0
 ENV DOCKER_OUTPUT 1
