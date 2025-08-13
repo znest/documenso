@@ -108,6 +108,9 @@ COPY --from=installer --chown=nodejs:nodejs /app/apps/remix/public ./apps/remix/
 COPY --from=installer --chown=nodejs:nodejs /app/packages/prisma/schema.prisma ./packages/prisma/schema.prisma
 COPY --from=installer --chown=nodejs:nodejs /app/packages/prisma/migrations ./packages/prisma/migrations
 
+# Copy Playwright browsers from installer stage
+COPY --from=installer --chown=nodejs:nodejs /home/nodejs/.cache/ms-playwright /home/nodejs/.cache/ms-playwright
+
 # Generate the prisma client again
 RUN npx prisma generate --schema ./packages/prisma/schema.prisma
 
