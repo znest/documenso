@@ -144,7 +144,7 @@ export const ConfigureDocumentRecipients = ({
   };
 
   return (
-    <div>
+    <div className="hidden">
       <h3 className="text-foreground mb-1 text-lg font-medium">
         <Trans>Recipients</Trans>
       </h3>
