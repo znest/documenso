@@ -1,6 +1,5 @@
 import { createElement } from 'react';
 
-import { msg } from '@lingui/core/macro';
 import type { Field, Signature } from '@prisma/client';
 import {
   DocumentSource,
@@ -16,7 +15,6 @@ import { DateTime } from 'luxon';
 import { match } from 'ts-pattern';
 import { z } from 'zod';
 
-import { mailer } from '@documenso/email/mailer';
 import { DocumentCreatedFromDirectTemplateEmailTemplate } from '@documenso/email/templates/document-created-from-direct-template';
 import { nanoid, prefixedId } from '@documenso/lib/universal/id';
 import { prisma } from '@documenso/prisma';
@@ -259,241 +257,225 @@ export const createDocumentFromDirectTemplate = async ({
 
   const initialRequestTime = new Date();
 
-  const { documentId, recipientId, token } = await prisma.$transaction(async (tx) => {
-    const documentData = await tx.documentData.create({
-      data: {
-        type: template.templateDocumentData.type,
-        data: template.templateDocumentData.data,
-        initialData: template.templateDocumentData.initialData,
-      },
-    });
+  const { documentId, recipientId, token } = await prisma.$transaction(
+    async (tx) => {
+      const documentData = await tx.documentData.create({
+        data: {
+          type: template.templateDocumentData.type,
+          data: template.templateDocumentData.data,
+          initialData: template.templateDocumentData.initialData,
+        },
+      });
 
-    // Create the document and non direct template recipients.
-    const document = await tx.document.create({
-      data: {
-        qrToken: prefixedId('qr'),
-        source: DocumentSource.TEMPLATE_DIRECT_LINK,
-        templateId: template.id,
-        userId: template.userId,
-        teamId: template.teamId,
-        title: template.title,
-        createdAt: initialRequestTime,
-        status: DocumentStatus.PENDING,
-        externalId: directTemplateExternalId,
-        visibility: settings.documentVisibility,
-        documentDataId: documentData.id,
-        authOptions: createDocumentAuthOptions({
-          globalAccessAuth: templateAuthOptions.globalAccessAuth,
-          globalActionAuth: templateAuthOptions.globalActionAuth,
-        }),
-        recipients: {
-          createMany: {
-            data: nonDirectTemplateRecipients.map((recipient) => {
-              const authOptions = ZRecipientAuthOptionsSchema.parse(recipient?.authOptions);
+      // Create the document and non direct template recipients.
+      const document = await tx.document.create({
+        data: {
+          qrToken: prefixedId('qr'),
+          source: DocumentSource.TEMPLATE_DIRECT_LINK,
+          templateId: template.id,
+          userId: template.userId,
+          teamId: template.teamId,
+          title: template.title,
+          createdAt: initialRequestTime,
+          status: DocumentStatus.PENDING,
+          externalId: directTemplateExternalId,
+          visibility: settings.documentVisibility,
+          documentDataId: documentData.id,
+          authOptions: createDocumentAuthOptions({
+            globalAccessAuth: templateAuthOptions.globalAccessAuth,
+            globalActionAuth: templateAuthOptions.globalActionAuth,
+          }),
+          recipients: {
+            createMany: {
+              data: nonDirectTemplateRecipients.map((recipient) => {
+                const authOptions = ZRecipientAuthOptionsSchema.parse(recipient?.authOptions);
+
+                return {
+                  email: recipient.email,
+                  name: recipient.name,
+                  role: recipient.role,
+                  authOptions: createRecipientAuthOptions({
+                    accessAuth: authOptions.accessAuth,
+                    actionAuth: authOptions.actionAuth,
+                  }),
+                  sendStatus:
+                    recipient.role === RecipientRole.CC ? SendStatus.SENT : SendStatus.NOT_SENT,
+                  signingStatus:
+                    recipient.role === RecipientRole.CC
+                      ? SigningStatus.SIGNED
+                      : SigningStatus.NOT_SIGNED,
+                  signingOrder: recipient.signingOrder,
+                  token: nanoid(),
+                };
+              }),
+            },
+          },
+          documentMeta: {
+            create: derivedDocumentMeta,
+          },
+        },
+        include: {
+          recipients: true,
+          team: {
+            select: {
+              url: true,
+            },
+          },
+        },
+      });
+
+      let nonDirectRecipientFieldsToCreate: Omit<Field, 'id' | 'secondaryId' | 'templateId'>[] = [];
+
+      Object.values(nonDirectTemplateRecipients).forEach((templateRecipient) => {
+        const recipient = document.recipients.find(
+          (recipient) => recipient.email === templateRecipient.email,
+        );
+
+        if (!recipient) {
+          throw new Error('Recipient not found.');
+        }
+
+        nonDirectRecipientFieldsToCreate = nonDirectRecipientFieldsToCreate.concat(
+          templateRecipient.fields.map((field) => ({
+            documentId: document.id,
+            recipientId: recipient.id,
+            type: field.type,
+            page: field.page,
+            positionX: field.positionX,
+            positionY: field.positionY,
+            width: field.width,
+            height: field.height,
+            customText: '',
+            inserted: false,
+            fieldMeta: field.fieldMeta,
+          })),
+        );
+      });
+
+      await tx.field.createMany({
+        data: nonDirectRecipientFieldsToCreate.map((field) => ({
+          ...field,
+          fieldMeta: field.fieldMeta ? ZFieldMetaSchema.parse(field.fieldMeta) : undefined,
+        })),
+      });
+
+      // Create the direct recipient and their non signature fields.
+      const createdDirectRecipient = await tx.recipient.create({
+        data: {
+          documentId: document.id,
+          email: directRecipientEmail,
+          name: directRecipientName,
+          authOptions: createRecipientAuthOptions({
+            accessAuth: directTemplateRecipientAuthOptions.accessAuth,
+            actionAuth: directTemplateRecipientAuthOptions.actionAuth,
+          }),
+          role: directTemplateRecipient.role,
+          token: nanoid(),
+          signingStatus: SigningStatus.SIGNED,
+          sendStatus: SendStatus.SENT,
+          signedAt: initialRequestTime,
+          signingOrder: directTemplateRecipient.signingOrder,
+          fields: {
+            createMany: {
+              data: directTemplateNonSignatureFields.map(({ templateField, customText }) => ({
+                documentId: document.id,
+                type: templateField.type,
+                page: templateField.page,
+                positionX: templateField.positionX,
+                positionY: templateField.positionY,
+                width: templateField.width,
+                height: templateField.height,
+                customText: customText ?? '',
+                inserted: true,
+                fieldMeta: templateField.fieldMeta || Prisma.JsonNull,
+              })),
+            },
+          },
+        },
+        include: {
+          fields: true,
+        },
+      });
+
+      // Create any direct recipient signature fields.
+      // Note: It's done like this because we can't nest things in createMany.
+      const createdDirectRecipientSignatureFields: CreatedDirectRecipientField[] =
+        await Promise.all(
+          directTemplateSignatureFields.map(
+            async ({ templateField, signature, derivedRecipientActionAuth }) => {
+              if (!signature) {
+                throw new Error('Not possible.');
+              }
+
+              const field = await tx.field.create({
+                data: {
+                  documentId: document.id,
+                  recipientId: createdDirectRecipient.id,
+                  type: templateField.type,
+                  page: templateField.page,
+                  positionX: templateField.positionX,
+                  positionY: templateField.positionY,
+                  width: templateField.width,
+                  height: templateField.height,
+                  customText: '',
+                  inserted: true,
+                  fieldMeta: templateField.fieldMeta || Prisma.JsonNull,
+                  signature: {
+                    create: {
+                      recipientId: createdDirectRecipient.id,
+                      signatureImageAsBase64: signature.signatureImageAsBase64,
+                      typedSignature: signature.typedSignature,
+                    },
+                  },
+                },
+                include: {
+                  signature: true,
+                },
+              });
 
               return {
-                email: recipient.email,
-                name: recipient.name,
-                role: recipient.role,
-                authOptions: createRecipientAuthOptions({
-                  accessAuth: authOptions.accessAuth,
-                  actionAuth: authOptions.actionAuth,
-                }),
-                sendStatus:
-                  recipient.role === RecipientRole.CC ? SendStatus.SENT : SendStatus.NOT_SENT,
-                signingStatus:
-                  recipient.role === RecipientRole.CC
-                    ? SigningStatus.SIGNED
-                    : SigningStatus.NOT_SIGNED,
-                signingOrder: recipient.signingOrder,
-                token: nanoid(),
+                field,
+                derivedRecipientActionAuth,
               };
-            }),
-          },
-        },
-        documentMeta: {
-          create: derivedDocumentMeta,
-        },
-      },
-      include: {
-        recipients: true,
-        team: {
-          select: {
-            url: true,
-          },
-        },
-      },
-    });
+            },
+          ),
+        );
 
-    let nonDirectRecipientFieldsToCreate: Omit<Field, 'id' | 'secondaryId' | 'templateId'>[] = [];
-
-    Object.values(nonDirectTemplateRecipients).forEach((templateRecipient) => {
-      const recipient = document.recipients.find(
-        (recipient) => recipient.email === templateRecipient.email,
-      );
-
-      if (!recipient) {
-        throw new Error('Recipient not found.');
-      }
-
-      nonDirectRecipientFieldsToCreate = nonDirectRecipientFieldsToCreate.concat(
-        templateRecipient.fields.map((field) => ({
-          documentId: document.id,
-          recipientId: recipient.id,
-          type: field.type,
-          page: field.page,
-          positionX: field.positionX,
-          positionY: field.positionY,
-          width: field.width,
-          height: field.height,
-          customText: '',
-          inserted: false,
-          fieldMeta: field.fieldMeta,
+      const createdDirectRecipientFields: CreatedDirectRecipientField[] = [
+        ...createdDirectRecipient.fields.map((field) => ({
+          field,
+          derivedRecipientActionAuth: undefined,
         })),
-      );
-    });
+        ...createdDirectRecipientSignatureFields,
+      ];
 
-    await tx.field.createMany({
-      data: nonDirectRecipientFieldsToCreate.map((field) => ({
-        ...field,
-        fieldMeta: field.fieldMeta ? ZFieldMetaSchema.parse(field.fieldMeta) : undefined,
-      })),
-    });
-
-    // Create the direct recipient and their non signature fields.
-    const createdDirectRecipient = await tx.recipient.create({
-      data: {
-        documentId: document.id,
-        email: directRecipientEmail,
-        name: directRecipientName,
-        authOptions: createRecipientAuthOptions({
-          accessAuth: directTemplateRecipientAuthOptions.accessAuth,
-          actionAuth: directTemplateRecipientAuthOptions.actionAuth,
-        }),
-        role: directTemplateRecipient.role,
-        token: nanoid(),
-        signingStatus: SigningStatus.SIGNED,
-        sendStatus: SendStatus.SENT,
-        signedAt: initialRequestTime,
-        signingOrder: directTemplateRecipient.signingOrder,
-        fields: {
-          createMany: {
-            data: directTemplateNonSignatureFields.map(({ templateField, customText }) => ({
-              documentId: document.id,
-              type: templateField.type,
-              page: templateField.page,
-              positionX: templateField.positionX,
-              positionY: templateField.positionY,
-              width: templateField.width,
-              height: templateField.height,
-              customText: customText ?? '',
-              inserted: true,
-              fieldMeta: templateField.fieldMeta || Prisma.JsonNull,
-            })),
-          },
-        },
-      },
-      include: {
-        fields: true,
-      },
-    });
-
-    // Create any direct recipient signature fields.
-    // Note: It's done like this because we can't nest things in createMany.
-    const createdDirectRecipientSignatureFields: CreatedDirectRecipientField[] = await Promise.all(
-      directTemplateSignatureFields.map(
-        async ({ templateField, signature, derivedRecipientActionAuth }) => {
-          if (!signature) {
-            throw new Error('Not possible.');
-          }
-
-          const field = await tx.field.create({
-            data: {
-              documentId: document.id,
-              recipientId: createdDirectRecipient.id,
-              type: templateField.type,
-              page: templateField.page,
-              positionX: templateField.positionX,
-              positionY: templateField.positionY,
-              width: templateField.width,
-              height: templateField.height,
-              customText: '',
-              inserted: true,
-              fieldMeta: templateField.fieldMeta || Prisma.JsonNull,
-              signature: {
-                create: {
-                  recipientId: createdDirectRecipient.id,
-                  signatureImageAsBase64: signature.signatureImageAsBase64,
-                  typedSignature: signature.typedSignature,
-                },
-              },
-            },
-            include: {
-              signature: true,
-            },
-          });
-
-          return {
-            field,
-            derivedRecipientActionAuth,
-          };
-        },
-      ),
-    );
-
-    const createdDirectRecipientFields: CreatedDirectRecipientField[] = [
-      ...createdDirectRecipient.fields.map((field) => ({
-        field,
-        derivedRecipientActionAuth: undefined,
-      })),
-      ...createdDirectRecipientSignatureFields,
-    ];
-
-    /**
-     * Create the following audit logs.
-     * - DOCUMENT_CREATED
-     * - DOCUMENT_FIELD_INSERTED
-     * - DOCUMENT_RECIPIENT_COMPLETED
-     */
-    const auditLogsToCreate: CreateDocumentAuditLogDataResponse[] = [
-      createDocumentAuditLogData({
-        type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_CREATED,
-        documentId: document.id,
-        user: {
-          id: user?.id,
-          name: user?.name,
-          email: directRecipientEmail,
-        },
-        metadata: requestMetadata,
-        data: {
-          title: document.title,
-          source: {
-            type: DocumentSource.TEMPLATE_DIRECT_LINK,
-            templateId: template.id,
-            directRecipientEmail,
-          },
-        },
-      }),
-      createDocumentAuditLogData({
-        type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_OPENED,
-        documentId: document.id,
-        user: {
-          id: user?.id,
-          name: user?.name,
-          email: directRecipientEmail,
-        },
-        metadata: requestMetadata,
-        data: {
-          recipientEmail: createdDirectRecipient.email,
-          recipientId: createdDirectRecipient.id,
-          recipientName: createdDirectRecipient.name,
-          recipientRole: createdDirectRecipient.role,
-          accessAuth: derivedRecipientAccessAuth || undefined,
-        },
-      }),
-      ...createdDirectRecipientFields.map(({ field, derivedRecipientActionAuth }) =>
+      /**
+       * Create the following audit logs.
+       * - DOCUMENT_CREATED
+       * - DOCUMENT_FIELD_INSERTED
+       * - DOCUMENT_RECIPIENT_COMPLETED
+       */
+      const auditLogsToCreate: CreateDocumentAuditLogDataResponse[] = [
         createDocumentAuditLogData({
-          type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_FIELD_INSERTED,
+          type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_CREATED,
+          documentId: document.id,
+          user: {
+            id: user?.id,
+            name: user?.name,
+            email: directRecipientEmail,
+          },
+          metadata: requestMetadata,
+          data: {
+            title: document.title,
+            source: {
+              type: DocumentSource.TEMPLATE_DIRECT_LINK,
+              templateId: template.id,
+              directRecipientEmail,
+            },
+          },
+        }),
+        createDocumentAuditLogData({
+          type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_OPENED,
           documentId: document.id,
           user: {
             id: user?.id,
@@ -506,97 +488,121 @@ export const createDocumentFromDirectTemplate = async ({
             recipientId: createdDirectRecipient.id,
             recipientName: createdDirectRecipient.name,
             recipientRole: createdDirectRecipient.role,
-            fieldId: field.secondaryId,
-            field: match(field.type)
-              .with(FieldType.SIGNATURE, FieldType.FREE_SIGNATURE, (type) => ({
-                type,
-                data:
-                  field.signature?.signatureImageAsBase64 || field.signature?.typedSignature || '',
-              }))
-              .with(
-                FieldType.DATE,
-                FieldType.EMAIL,
-                FieldType.INITIALS,
-                FieldType.NAME,
-                FieldType.TEXT,
-                FieldType.NUMBER,
-                FieldType.CHECKBOX,
-                FieldType.DROPDOWN,
-                FieldType.RADIO,
-                (type) => ({
-                  type,
-                  data: field.customText,
-                }),
-              )
-              .exhaustive(),
-            fieldSecurity: derivedRecipientActionAuth
-              ? {
-                  type: derivedRecipientActionAuth,
-                }
-              : undefined,
+            accessAuth: derivedRecipientAccessAuth || undefined,
           },
         }),
-      ),
-      createDocumentAuditLogData({
-        type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_RECIPIENT_COMPLETED,
+        ...createdDirectRecipientFields.map(({ field, derivedRecipientActionAuth }) =>
+          createDocumentAuditLogData({
+            type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_FIELD_INSERTED,
+            documentId: document.id,
+            user: {
+              id: user?.id,
+              name: user?.name,
+              email: directRecipientEmail,
+            },
+            metadata: requestMetadata,
+            data: {
+              recipientEmail: createdDirectRecipient.email,
+              recipientId: createdDirectRecipient.id,
+              recipientName: createdDirectRecipient.name,
+              recipientRole: createdDirectRecipient.role,
+              fieldId: field.secondaryId,
+              field: match(field.type)
+                .with(FieldType.SIGNATURE, FieldType.FREE_SIGNATURE, (type) => ({
+                  type,
+                  data:
+                    field.signature?.signatureImageAsBase64 ||
+                    field.signature?.typedSignature ||
+                    '',
+                }))
+                .with(
+                  FieldType.DATE,
+                  FieldType.EMAIL,
+                  FieldType.INITIALS,
+                  FieldType.NAME,
+                  FieldType.TEXT,
+                  FieldType.NUMBER,
+                  FieldType.CHECKBOX,
+                  FieldType.DROPDOWN,
+                  FieldType.RADIO,
+                  (type) => ({
+                    type,
+                    data: field.customText,
+                  }),
+                )
+                .exhaustive(),
+              fieldSecurity: derivedRecipientActionAuth
+                ? {
+                    type: derivedRecipientActionAuth,
+                  }
+                : undefined,
+            },
+          }),
+        ),
+        createDocumentAuditLogData({
+          type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_RECIPIENT_COMPLETED,
+          documentId: document.id,
+          user: {
+            id: user?.id,
+            name: user?.name,
+            email: directRecipientEmail,
+          },
+          metadata: requestMetadata,
+          data: {
+            recipientEmail: createdDirectRecipient.email,
+            recipientId: createdDirectRecipient.id,
+            recipientName: createdDirectRecipient.name,
+            recipientRole: createdDirectRecipient.role,
+            actionAuth: createdDirectRecipient.authOptions?.actionAuth ?? [],
+          },
+        }),
+      ];
+
+      await tx.documentAuditLog.createMany({
+        data: auditLogsToCreate,
+      });
+
+      // Send email to template owner.
+      const emailTemplate = createElement(DocumentCreatedFromDirectTemplateEmailTemplate, {
+        recipientName: directRecipientEmail,
+        recipientRole: directTemplateRecipient.role,
+        documentLink: `${NEXT_PUBLIC_WEBAPP_URL()}${formatDocumentsPath(document.team?.url)}/${
+          document.id
+        }`,
+        documentName: document.title,
+        assetBaseUrl: NEXT_PUBLIC_WEBAPP_URL() || 'http://localhost:3000',
+      });
+
+      const [html, text] = await Promise.all([
+        renderEmailWithI18N(emailTemplate, { lang: emailLanguage, branding }),
+        renderEmailWithI18N(emailTemplate, { lang: emailLanguage, branding, plainText: true }),
+      ]);
+
+      const i18n = await getI18nInstance(emailLanguage);
+
+      // await mailer.sendMail({
+      //   to: [
+      //     {
+      //       name: templateOwner.name || '',
+      //       address: templateOwner.email,
+      //     },
+      //   ],
+      //   from: senderEmail,
+      //   subject: i18n._(msg`Document created from direct template`),
+      //   html,
+      //   text,
+      // });
+
+      return {
+        token: createdDirectRecipient.token,
         documentId: document.id,
-        user: {
-          id: user?.id,
-          name: user?.name,
-          email: directRecipientEmail,
-        },
-        metadata: requestMetadata,
-        data: {
-          recipientEmail: createdDirectRecipient.email,
-          recipientId: createdDirectRecipient.id,
-          recipientName: createdDirectRecipient.name,
-          recipientRole: createdDirectRecipient.role,
-          actionAuth: createdDirectRecipient.authOptions?.actionAuth ?? [],
-        },
-      }),
-    ];
-
-    await tx.documentAuditLog.createMany({
-      data: auditLogsToCreate,
-    });
-
-    // Send email to template owner.
-    const emailTemplate = createElement(DocumentCreatedFromDirectTemplateEmailTemplate, {
-      recipientName: directRecipientEmail,
-      recipientRole: directTemplateRecipient.role,
-      documentLink: `${NEXT_PUBLIC_WEBAPP_URL()}${formatDocumentsPath(document.team?.url)}/${
-        document.id
-      }`,
-      documentName: document.title,
-      assetBaseUrl: NEXT_PUBLIC_WEBAPP_URL() || 'http://localhost:3000',
-    });
-
-    const [html, text] = await Promise.all([
-      renderEmailWithI18N(emailTemplate, { lang: emailLanguage, branding }),
-      renderEmailWithI18N(emailTemplate, { lang: emailLanguage, branding, plainText: true }),
-    ]);
-
-    const i18n = await getI18nInstance(emailLanguage);
-
-    await mailer.sendMail({
-      to: [
-        {
-          name: templateOwner.name || '',
-          address: templateOwner.email,
-        },
-      ],
-      from: senderEmail,
-      subject: i18n._(msg`Document created from direct template`),
-      html,
-      text,
-    });
-
-    return {
-      token: createdDirectRecipient.token,
-      documentId: document.id,
-      recipientId: createdDirectRecipient.id,
-    };
-  });
+        recipientId: createdDirectRecipient.id,
+      };
+    },
+    {
+      timeout: 30000, // 30 seconds timeout
+    },
+  );
 
   try {
     // This handles sending emails and sealing the document if required.
