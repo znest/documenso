@@ -1,9 +1,7 @@
 import { createElement } from 'react';
 
-import { msg } from '@lingui/core/macro';
 import { DocumentSource } from '@prisma/client';
 
-import { mailer } from '@documenso/email/mailer';
 import { DocumentCompletedEmailTemplate } from '@documenso/email/templates/document-completed';
 import { prisma } from '@documenso/prisma';
 
@@ -109,25 +107,25 @@ export const sendCompletedEmail = async ({ documentId, requestMetadata }: SendDo
 
     const i18n = await getI18nInstance(emailLanguage);
 
-    await mailer.sendMail({
-      to: [
-        {
-          name: owner.name || '',
-          address: owner.email,
-        },
-      ],
-      from: senderEmail,
-      replyTo: replyToEmail,
-      subject: i18n._(msg`Signing Complete!`),
-      html,
-      text,
-      attachments: [
-        {
-          filename: document.title.endsWith('.pdf') ? document.title : document.title + '.pdf',
-          content: Buffer.from(completedDocument),
-        },
-      ],
-    });
+    // await mailer.sendMail({
+    //   to: [
+    //     {
+    //       name: owner.name || '',
+    //       address: owner.email,
+    //     },
+    //   ],
+    //   from: senderEmail,
+    //   replyTo: replyToEmail,
+    //   subject: i18n._(msg`Signing Complete!`),
+    //   html,
+    //   text,
+    //   attachments: [
+    //     {
+    //       filename: document.title.endsWith('.pdf') ? document.title : document.title + '.pdf',
+    //       content: Buffer.from(completedDocument),
+    //     },
+    //   ],
+    // });
 
     await prisma.documentAuditLog.create({
       data: createDocumentAuditLogData({
@@ -182,28 +180,28 @@ export const sendCompletedEmail = async ({ documentId, requestMetadata }: SendDo
 
       const i18n = await getI18nInstance(emailLanguage);
 
-      await mailer.sendMail({
-        to: [
-          {
-            name: recipient.name,
-            address: recipient.email,
-          },
-        ],
-        from: senderEmail,
-        replyTo: replyToEmail,
-        subject:
-          isDirectTemplate && document.documentMeta?.subject
-            ? renderCustomEmailTemplate(document.documentMeta.subject, customEmailTemplate)
-            : i18n._(msg`Signing Complete!`),
-        html,
-        text,
-        attachments: [
-          {
-            filename: document.title.endsWith('.pdf') ? document.title : document.title + '.pdf',
-            content: Buffer.from(completedDocument),
-          },
-        ],
-      });
+      // await mailer.sendMail({
+      //   to: [
+      //     {
+      //       name: recipient.name,
+      //       address: recipient.email,
+      //     },
+      //   ],
+      //   from: senderEmail,
+      //   replyTo: replyToEmail,
+      //   subject:
+      //     isDirectTemplate && document.documentMeta?.subject
+      //       ? renderCustomEmailTemplate(document.documentMeta.subject, customEmailTemplate)
+      //       : i18n._(msg`Signing Complete!`),
+      //   html,
+      //   text,
+      //   attachments: [
+      //     {
+      //       filename: document.title.endsWith('.pdf') ? document.title : document.title + '.pdf',
+      //       content: Buffer.from(completedDocument),
+      //     },
+      //   ],
+      // });
 
       await prisma.documentAuditLog.create({
         data: createDocumentAuditLogData({
