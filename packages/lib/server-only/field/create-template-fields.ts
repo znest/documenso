@@ -4,6 +4,7 @@ import type { TFieldMetaSchema } from '@documenso/lib/types/field-meta';
 import { prisma } from '@documenso/prisma';
 
 import { AppError, AppErrorCode } from '../../errors/app-error';
+import { assertAdvancedFieldMetaValid } from '../../utils/advanced-fields-helpers';
 import { canRecipientFieldsBeModified } from '../../utils/recipients';
 import { buildTeamWhereQuery } from '../../utils/teams';
 
@@ -64,6 +65,10 @@ export const createTemplateFields = async ({
           'Recipient type cannot have fields, or they have already interacted with the template.',
       });
     }
+
+    // Reject advanced field types (checkbox/radio/dropdown) without valid fieldMeta so
+    // we don't persist rows that would later crash the seal job.
+    assertAdvancedFieldMetaValid(field.type, field.fieldMeta);
 
     return {
       ...field,

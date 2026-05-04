@@ -111,6 +111,28 @@ export const createDocumentFromDirectTemplate = async ({
     throw new AppError(AppErrorCode.INVALID_REQUEST, { message: 'Invalid or missing template' });
   }
 
+  // Fail fast when the template contains advanced fields (checkbox/radio/dropdown) without
+  // the required fieldMeta. Legacy rows predating the setFieldsForTemplate guard, or fields
+  // created through the granular /template/field/* endpoints that don't validate, would
+  // otherwise be copied onto the document with a null fieldMeta and later crash the
+  // seal-document job when insertFieldInPDF tries to parse them.
+  const advancedFieldsMissingMeta = template.recipients
+    .flatMap((recipient) => recipient.fields)
+    .filter(
+      (field) =>
+        (field.type === FieldType.CHECKBOX ||
+          field.type === FieldType.RADIO ||
+          field.type === FieldType.DROPDOWN) &&
+        !field.fieldMeta,
+    );
+
+  if (advancedFieldsMissingMeta.length > 0) {
+    throw new AppError(AppErrorCode.INVALID_REQUEST, {
+      message:
+        'Template is misconfigured: one or more advanced fields are missing required metadata. Re-open the template and configure the affected fields before signing.',
+    });
+  }
+
   const { branding, settings, senderEmail, emailLanguage } = await getEmailContext({
     emailType: 'INTERNAL',
     source: {

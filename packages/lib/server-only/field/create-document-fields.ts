@@ -5,6 +5,7 @@ import { createDocumentAuditLogData } from '@documenso/lib/utils/document-audit-
 import { prisma } from '@documenso/prisma';
 
 import { AppError, AppErrorCode } from '../../errors/app-error';
+import { assertAdvancedFieldMetaValid } from '../../utils/advanced-fields-helpers';
 import { canRecipientFieldsBeModified } from '../../utils/recipients';
 import { getDocumentWhereInput } from '../document/get-document-by-id';
 
@@ -74,6 +75,10 @@ export const createDocumentFields = async ({
           'Recipient type cannot have fields, or they have already interacted with the document.',
       });
     }
+
+    // Reject advanced field types (checkbox/radio/dropdown) without valid fieldMeta so
+    // we don't persist rows that would later crash the seal job.
+    assertAdvancedFieldMetaValid(field.type, field.fieldMeta);
 
     return {
       ...field,

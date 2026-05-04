@@ -10,6 +10,7 @@ import {
 import { prisma } from '@documenso/prisma';
 
 import { AppError, AppErrorCode } from '../../errors/app-error';
+import { assertAdvancedFieldMetaValid } from '../../utils/advanced-fields-helpers';
 import { canRecipientFieldsBeModified } from '../../utils/recipients';
 import { getDocumentWhereInput } from '../document/get-document-by-id';
 
@@ -90,6 +91,16 @@ export const updateDocumentFields = async ({
           'Cannot modify a field where the recipient has already interacted with the document',
       });
     }
+
+    // Validate advanced field metadata against the final type and final fieldMeta. If the
+    // caller didn't change either, we use the previously-stored value as the effective one.
+    const effectiveType = field.type ?? originalField.type;
+    const effectiveFieldMeta =
+      field.fieldMeta !== undefined
+        ? field.fieldMeta
+        : (originalField.fieldMeta as TFieldMetaSchema | null | undefined);
+
+    assertAdvancedFieldMetaValid(effectiveType, effectiveFieldMeta);
 
     return {
       originalField,

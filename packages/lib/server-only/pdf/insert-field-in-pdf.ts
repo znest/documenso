@@ -228,10 +228,15 @@ export const insertFieldInPDF = async (pdf: PDFDocument, field: FieldWithSignatu
     .with({ type: FieldType.CHECKBOX }, (field) => {
       const meta = ZCheckboxFieldMeta.safeParse(field.fieldMeta);
 
+      // Tolerate legacy/misconfigured checkbox fields with missing or invalid fieldMeta:
+      // skip stamping so the seal job can still complete instead of crashing the document.
+      // The template owner can re-open the template to persist valid fieldMeta.
       if (!meta.success) {
-        console.error(meta.error);
-
-        throw new Error('Invalid checkbox field meta');
+        console.warn(
+          `[insertFieldInPDF] Skipping CHECKBOX field ${field.secondaryId} due to invalid fieldMeta:`,
+          meta.error,
+        );
+        return;
       }
 
       const values = meta.data.values?.map((item) => ({
@@ -318,10 +323,14 @@ export const insertFieldInPDF = async (pdf: PDFDocument, field: FieldWithSignatu
     .with({ type: FieldType.RADIO }, (field) => {
       const meta = ZRadioFieldMeta.safeParse(field.fieldMeta);
 
+      // Tolerate legacy/misconfigured radio fields with missing or invalid fieldMeta.
+      // See the CHECKBOX branch above for rationale.
       if (!meta.success) {
-        console.error(meta.error);
-
-        throw new Error('Invalid radio field meta');
+        console.warn(
+          `[insertFieldInPDF] Skipping RADIO field ${field.secondaryId} due to invalid fieldMeta:`,
+          meta.error,
+        );
+        return;
       }
 
       const values = meta?.data.values?.map((item) => ({

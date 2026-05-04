@@ -1,6 +1,59 @@
 import { type Field, FieldType } from '@prisma/client';
 
-import { ZFieldMetaSchema } from '../types/field-meta';
+import { AppError, AppErrorCode } from '../errors/app-error';
+import {
+  type TFieldMetaSchema,
+  ZCheckboxFieldMeta,
+  ZDropdownFieldMeta,
+  ZFieldMetaSchema,
+  ZRadioFieldMeta,
+} from '../types/field-meta';
+
+/**
+ * Field types whose fieldMeta must be present and schema-valid. A missing or malformed
+ * fieldMeta for these types will crash the seal job in insertFieldInPDF.
+ */
+const FIELD_TYPES_REQUIRING_META: FieldType[] = [
+  FieldType.CHECKBOX,
+  FieldType.RADIO,
+  FieldType.DROPDOWN,
+];
+
+/**
+ * Throws a user-facing AppError if the field type requires fieldMeta and the provided
+ * value is missing or does not match the schema for that type.
+ */
+export const assertAdvancedFieldMetaValid = (
+  type: FieldType,
+  fieldMeta: TFieldMetaSchema | undefined | null,
+) => {
+  if (!FIELD_TYPES_REQUIRING_META.includes(type)) {
+    return;
+  }
+
+  if (!fieldMeta) {
+    throw new AppError(AppErrorCode.INVALID_BODY, {
+      message: `${type.toLowerCase()} field is missing required metadata`,
+    });
+  }
+
+  const parser =
+    type === FieldType.CHECKBOX
+      ? ZCheckboxFieldMeta
+      : type === FieldType.RADIO
+        ? ZRadioFieldMeta
+        : ZDropdownFieldMeta;
+
+  const result = parser.safeParse(fieldMeta);
+
+  if (!result.success) {
+    throw new AppError(AppErrorCode.INVALID_BODY, {
+      message: `Invalid ${type.toLowerCase()} field metadata: ${result.error.issues
+        .map((issue) => issue.message)
+        .join(', ')}`,
+    });
+  }
+};
 
 // Currently it seems that the majority of fields have advanced fields for font reasons.
 // This array should only contain fields that have an optional setting in the fieldMeta.
