@@ -19,6 +19,7 @@ import { nanoid, prefixedId } from '@documenso/lib/universal/id';
 import { prisma } from '@documenso/prisma';
 import type { TSignFieldWithTokenMutationSchema } from '@documenso/trpc/server/field-router/schema';
 
+import { IS_DOCUMENSO_OUTBOUND_EMAIL_DISABLED } from '../../constants/app';
 import { AppError, AppErrorCode } from '../../errors/app-error';
 import { jobs } from '../../jobs/client';
 import { DOCUMENT_AUDIT_LOG_TYPE, RECIPIENT_DIFF_TYPE } from '../../types/document-audit-logs';
@@ -333,256 +334,242 @@ export const createDocumentFromDirectTemplate = async ({
 
   const incrementedDocumentId = await incrementDocumentId();
 
-  const { createdEnvelope, recipientId, token } = await prisma.$transaction(async (tx) => {
-    // Create the envelope and non direct template recipients.
-    const createdEnvelope = await tx.envelope.create({
-      data: {
-        id: prefixedId('envelope'),
-        secondaryId: incrementedDocumentId.formattedDocumentId,
-        type: EnvelopeType.DOCUMENT,
-        internalVersion: directTemplateEnvelope.internalVersion,
-        qrToken: prefixedId('qr'),
-        source: DocumentSource.TEMPLATE_DIRECT_LINK,
-        templateId: directTemplateEnvelopeLegacyId,
-        userId: directTemplateEnvelope.userId,
-        teamId: directTemplateEnvelope.teamId,
-        title: directTemplateEnvelope.title,
-        createdAt: initialRequestTime,
-        status: DocumentStatus.PENDING,
-        externalId: directTemplateExternalId,
-        visibility: settings.documentVisibility,
-        envelopeItems: {
-          createMany: {
-            data: envelopeItemsToCreate,
+  const { createdEnvelope, recipientId, token } = await prisma.$transaction(
+    async (tx) => {
+      // Create the envelope and non direct template recipients.
+      const createdEnvelope = await tx.envelope.create({
+        data: {
+          id: prefixedId('envelope'),
+          secondaryId: incrementedDocumentId.formattedDocumentId,
+          type: EnvelopeType.DOCUMENT,
+          internalVersion: directTemplateEnvelope.internalVersion,
+          qrToken: prefixedId('qr'),
+          source: DocumentSource.TEMPLATE_DIRECT_LINK,
+          templateId: directTemplateEnvelopeLegacyId,
+          userId: directTemplateEnvelope.userId,
+          teamId: directTemplateEnvelope.teamId,
+          title: directTemplateEnvelope.title,
+          createdAt: initialRequestTime,
+          status: DocumentStatus.PENDING,
+          externalId: directTemplateExternalId,
+          visibility: settings.documentVisibility,
+          envelopeItems: {
+            createMany: {
+              data: envelopeItemsToCreate,
+            },
+          },
+          authOptions: createDocumentAuthOptions({
+            globalAccessAuth: templateAuthOptions.globalAccessAuth,
+            globalActionAuth: templateAuthOptions.globalActionAuth,
+          }),
+          recipients: {
+            createMany: {
+              data: nonDirectTemplateRecipients.map((recipient) => {
+                const authOptions = ZRecipientAuthOptionsSchema.parse(recipient?.authOptions);
+
+                return {
+                  email: recipient.email,
+                  name: recipient.name,
+                  role: recipient.role,
+                  authOptions: createRecipientAuthOptions({
+                    accessAuth: authOptions.accessAuth,
+                    actionAuth: authOptions.actionAuth,
+                  }),
+                  sendStatus:
+                    recipient.role === RecipientRole.CC ? SendStatus.SENT : SendStatus.NOT_SENT,
+                  signingStatus:
+                    recipient.role === RecipientRole.CC
+                      ? SigningStatus.SIGNED
+                      : SigningStatus.NOT_SIGNED,
+                  signingOrder: recipient.signingOrder,
+                  token: nanoid(),
+                };
+              }),
+            },
+          },
+          documentMetaId: documentMeta.id,
+        },
+        include: {
+          recipients: true,
+          team: {
+            select: {
+              url: true,
+            },
+          },
+          envelopeItems: {
+            select: {
+              id: true,
+            },
           },
         },
-        authOptions: createDocumentAuthOptions({
-          globalAccessAuth: templateAuthOptions.globalAccessAuth,
-          globalActionAuth: templateAuthOptions.globalActionAuth,
-        }),
-        recipients: {
-          createMany: {
-            data: nonDirectTemplateRecipients.map((recipient) => {
-              const authOptions = ZRecipientAuthOptionsSchema.parse(recipient?.authOptions);
+      });
 
-              return {
-                email: recipient.email,
-                name: recipient.name,
-                role: recipient.role,
-                authOptions: createRecipientAuthOptions({
-                  accessAuth: authOptions.accessAuth,
-                  actionAuth: authOptions.actionAuth,
-                }),
-                sendStatus:
-                  recipient.role === RecipientRole.CC ? SendStatus.SENT : SendStatus.NOT_SENT,
-                signingStatus:
-                  recipient.role === RecipientRole.CC
-                    ? SigningStatus.SIGNED
-                    : SigningStatus.NOT_SIGNED,
-                signingOrder: recipient.signingOrder,
-                token: nanoid(),
-              };
-            }),
-          },
-        },
-        documentMetaId: documentMeta.id,
-      },
-      include: {
-        recipients: true,
-        team: {
-          select: {
-            url: true,
-          },
-        },
-        envelopeItems: {
-          select: {
-            id: true,
-          },
-        },
-      },
-    });
+      let nonDirectRecipientFieldsToCreate: Omit<Field, 'id' | 'secondaryId' | 'templateId'>[] = [];
 
-    let nonDirectRecipientFieldsToCreate: Omit<Field, 'id' | 'secondaryId' | 'templateId'>[] = [];
+      Object.values(nonDirectTemplateRecipients).forEach((templateRecipient) => {
+        const recipient = createdEnvelope.recipients.find(
+          (recipient) => recipient.email === templateRecipient.email,
+        );
 
-    Object.values(nonDirectTemplateRecipients).forEach((templateRecipient) => {
-      const recipient = createdEnvelope.recipients.find(
-        (recipient) => recipient.email === templateRecipient.email,
-      );
+        if (!recipient) {
+          throw new Error('Recipient not found.');
+        }
 
-      if (!recipient) {
-        throw new Error('Recipient not found.');
-      }
+        nonDirectRecipientFieldsToCreate = nonDirectRecipientFieldsToCreate.concat(
+          templateRecipient.fields.map((field) => ({
+            envelopeId: createdEnvelope.id,
+            envelopeItemId: oldEnvelopeItemToNewEnvelopeItemIdMap[field.envelopeItemId],
+            recipientId: recipient.id,
+            type: field.type,
+            page: field.page,
+            positionX: field.positionX,
+            positionY: field.positionY,
+            width: field.width,
+            height: field.height,
+            customText: '',
+            inserted: false,
+            fieldMeta: field.fieldMeta,
+          })),
+        );
+      });
 
-      nonDirectRecipientFieldsToCreate = nonDirectRecipientFieldsToCreate.concat(
-        templateRecipient.fields.map((field) => ({
-          envelopeId: createdEnvelope.id,
-          envelopeItemId: oldEnvelopeItemToNewEnvelopeItemIdMap[field.envelopeItemId],
-          recipientId: recipient.id,
-          type: field.type,
-          page: field.page,
-          positionX: field.positionX,
-          positionY: field.positionY,
-          width: field.width,
-          height: field.height,
-          customText: '',
-          inserted: false,
-          fieldMeta: field.fieldMeta,
+      await tx.field.createMany({
+        data: nonDirectRecipientFieldsToCreate.map((field) => ({
+          ...field,
+          fieldMeta: field.fieldMeta ? ZFieldMetaSchema.parse(field.fieldMeta) : undefined,
         })),
-      );
-    });
+      });
 
-    await tx.field.createMany({
-      data: nonDirectRecipientFieldsToCreate.map((field) => ({
-        ...field,
-        fieldMeta: field.fieldMeta ? ZFieldMetaSchema.parse(field.fieldMeta) : undefined,
-      })),
-    });
+      // Create the direct recipient and their non signature fields.
+      const createdDirectRecipient = await tx.recipient.create({
+        data: {
+          envelopeId: createdEnvelope.id,
+          email: directRecipientEmail,
+          name: directRecipientName,
+          authOptions: createRecipientAuthOptions({
+            accessAuth: directTemplateRecipientAuthOptions.accessAuth,
+            actionAuth: directTemplateRecipientAuthOptions.actionAuth,
+          }),
+          role: directTemplateRecipient.role,
+          token: nanoid(),
+          signingStatus: SigningStatus.SIGNED,
+          sendStatus: SendStatus.SENT,
+          signedAt: initialRequestTime,
+          signingOrder: directTemplateRecipient.signingOrder,
+          fields: {
+            createMany: {
+              data: directTemplateNonSignatureFields.map(({ templateField, customText }) => {
+                let inserted = true;
 
-    // Create the direct recipient and their non signature fields.
-    const createdDirectRecipient = await tx.recipient.create({
-      data: {
-        envelopeId: createdEnvelope.id,
-        email: directRecipientEmail,
-        name: directRecipientName,
-        authOptions: createRecipientAuthOptions({
-          accessAuth: directTemplateRecipientAuthOptions.accessAuth,
-          actionAuth: directTemplateRecipientAuthOptions.actionAuth,
-        }),
-        role: directTemplateRecipient.role,
-        token: nanoid(),
-        signingStatus: SigningStatus.SIGNED,
-        sendStatus: SendStatus.SENT,
-        signedAt: initialRequestTime,
-        signingOrder: directTemplateRecipient.signingOrder,
-        fields: {
-          createMany: {
-            data: directTemplateNonSignatureFields.map(({ templateField, customText }) => {
-              let inserted = true;
+                // Custom logic for V2 to only insert if values exist.
+                if (directTemplateEnvelope.internalVersion === 2) {
+                  inserted = customText !== '';
+                }
 
-              // Custom logic for V2 to only insert if values exist.
-              if (directTemplateEnvelope.internalVersion === 2) {
-                inserted = customText !== '';
+                return {
+                  envelopeId: createdEnvelope.id,
+                  envelopeItemId:
+                    oldEnvelopeItemToNewEnvelopeItemIdMap[templateField.envelopeItemId],
+                  type: templateField.type,
+                  page: templateField.page,
+                  positionX: templateField.positionX,
+                  positionY: templateField.positionY,
+                  width: templateField.width,
+                  height: templateField.height,
+                  customText: customText ?? '',
+                  inserted,
+                  fieldMeta: templateField.fieldMeta || Prisma.JsonNull,
+                };
+              }),
+            },
+          },
+        },
+        include: {
+          fields: true,
+        },
+      });
+
+      // Create any direct recipient signature fields.
+      // Note: It's done like this because we can't nest things in createMany.
+      const createdDirectRecipientSignatureFields: CreatedDirectRecipientField[] =
+        await Promise.all(
+          directTemplateSignatureFields.map(
+            async ({ templateField, signature, derivedRecipientActionAuth }) => {
+              if (!signature) {
+                throw new Error('Not possible.');
               }
 
-              return {
-                envelopeId: createdEnvelope.id,
-                envelopeItemId: oldEnvelopeItemToNewEnvelopeItemIdMap[templateField.envelopeItemId],
-                type: templateField.type,
-                page: templateField.page,
-                positionX: templateField.positionX,
-                positionY: templateField.positionY,
-                width: templateField.width,
-                height: templateField.height,
-                customText: customText ?? '',
-                inserted,
-                fieldMeta: templateField.fieldMeta || Prisma.JsonNull,
-              };
-            }),
-          },
-        },
-      },
-      include: {
-        fields: true,
-      },
-    });
-
-    // Create any direct recipient signature fields.
-    // Note: It's done like this because we can't nest things in createMany.
-    const createdDirectRecipientSignatureFields: CreatedDirectRecipientField[] = await Promise.all(
-      directTemplateSignatureFields.map(
-        async ({ templateField, signature, derivedRecipientActionAuth }) => {
-          if (!signature) {
-            throw new Error('Not possible.');
-          }
-
-          const field = await tx.field.create({
-            data: {
-              envelopeId: createdEnvelope.id,
-              envelopeItemId: oldEnvelopeItemToNewEnvelopeItemIdMap[templateField.envelopeItemId],
-              recipientId: createdDirectRecipient.id,
-              type: templateField.type,
-              page: templateField.page,
-              positionX: templateField.positionX,
-              positionY: templateField.positionY,
-              width: templateField.width,
-              height: templateField.height,
-              customText: '',
-              inserted: true,
-              fieldMeta: templateField.fieldMeta || Prisma.JsonNull,
-              signature: {
-                create: {
+              const field = await tx.field.create({
+                data: {
+                  envelopeId: createdEnvelope.id,
+                  envelopeItemId:
+                    oldEnvelopeItemToNewEnvelopeItemIdMap[templateField.envelopeItemId],
                   recipientId: createdDirectRecipient.id,
-                  signatureImageAsBase64: signature.signatureImageAsBase64,
-                  typedSignature: signature.typedSignature,
+                  type: templateField.type,
+                  page: templateField.page,
+                  positionX: templateField.positionX,
+                  positionY: templateField.positionY,
+                  width: templateField.width,
+                  height: templateField.height,
+                  customText: '',
+                  inserted: true,
+                  fieldMeta: templateField.fieldMeta || Prisma.JsonNull,
+                  signature: {
+                    create: {
+                      recipientId: createdDirectRecipient.id,
+                      signatureImageAsBase64: signature.signatureImageAsBase64,
+                      typedSignature: signature.typedSignature,
+                    },
+                  },
                 },
-              },
+                include: {
+                  signature: true,
+                },
+              });
+
+              return {
+                field,
+                derivedRecipientActionAuth,
+              };
             },
-            include: {
-              signature: true,
-            },
-          });
+          ),
+        );
 
-          return {
-            field,
-            derivedRecipientActionAuth,
-          };
-        },
-      ),
-    );
+      const createdDirectRecipientFields: CreatedDirectRecipientField[] = [
+        ...createdDirectRecipient.fields.map((field) => ({
+          field,
+          derivedRecipientActionAuth: undefined,
+        })),
+        ...createdDirectRecipientSignatureFields,
+      ];
 
-    const createdDirectRecipientFields: CreatedDirectRecipientField[] = [
-      ...createdDirectRecipient.fields.map((field) => ({
-        field,
-        derivedRecipientActionAuth: undefined,
-      })),
-      ...createdDirectRecipientSignatureFields,
-    ];
-
-    /**
-     * Create the following audit logs.
-     * - DOCUMENT_CREATED
-     * - DOCUMENT_FIELD_INSERTED
-     * - DOCUMENT_RECIPIENT_COMPLETED
-     */
-    const auditLogsToCreate: CreateDocumentAuditLogDataResponse[] = [
-      createDocumentAuditLogData({
-        type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_CREATED,
-        envelopeId: createdEnvelope.id,
-        user: {
-          id: user?.id,
-          name: user?.name,
-          email: directRecipientEmail,
-        },
-        metadata: requestMetadata,
-        data: {
-          title: createdEnvelope.title,
-          source: {
-            type: DocumentSource.TEMPLATE_DIRECT_LINK,
-            templateId: directTemplateEnvelopeLegacyId,
-            directRecipientEmail,
-          },
-        },
-      }),
-      createDocumentAuditLogData({
-        type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_OPENED,
-        envelopeId: createdEnvelope.id,
-        user: {
-          id: user?.id,
-          name: user?.name,
-          email: directRecipientEmail,
-        },
-        metadata: requestMetadata,
-        data: {
-          recipientEmail: createdDirectRecipient.email,
-          recipientId: createdDirectRecipient.id,
-          recipientName: createdDirectRecipient.name,
-          recipientRole: createdDirectRecipient.role,
-          accessAuth: derivedRecipientAccessAuth || undefined,
-        },
-      }),
-      ...createdDirectRecipientFields.map(({ field, derivedRecipientActionAuth }) =>
+      /**
+       * Create the following audit logs.
+       * - DOCUMENT_CREATED
+       * - DOCUMENT_FIELD_INSERTED
+       * - DOCUMENT_RECIPIENT_COMPLETED
+       */
+      const auditLogsToCreate: CreateDocumentAuditLogDataResponse[] = [
         createDocumentAuditLogData({
-          type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_FIELD_INSERTED,
+          type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_CREATED,
+          envelopeId: createdEnvelope.id,
+          user: {
+            id: user?.id,
+            name: user?.name,
+            email: directRecipientEmail,
+          },
+          metadata: requestMetadata,
+          data: {
+            title: createdEnvelope.title,
+            source: {
+              type: DocumentSource.TEMPLATE_DIRECT_LINK,
+              templateId: directTemplateEnvelopeLegacyId,
+              directRecipientEmail,
+            },
+          },
+        }),
+        createDocumentAuditLogData({
+          type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_OPENED,
           envelopeId: createdEnvelope.id,
           user: {
             id: user?.id,
@@ -595,159 +582,181 @@ export const createDocumentFromDirectTemplate = async ({
             recipientId: createdDirectRecipient.id,
             recipientName: createdDirectRecipient.name,
             recipientRole: createdDirectRecipient.role,
-            fieldId: field.secondaryId,
-            field: match(field.type)
-              .with(FieldType.SIGNATURE, FieldType.FREE_SIGNATURE, (type) => ({
-                type,
-                data:
-                  field.signature?.signatureImageAsBase64 || field.signature?.typedSignature || '',
-              }))
-              .with(
-                FieldType.DATE,
-                FieldType.EMAIL,
-                FieldType.INITIALS,
-                FieldType.NAME,
-                FieldType.TEXT,
-                FieldType.NUMBER,
-                FieldType.CHECKBOX,
-                FieldType.DROPDOWN,
-                FieldType.RADIO,
-                (type) => ({
-                  type,
-                  data: field.customText,
-                }),
-              )
-              .exhaustive(),
-            fieldSecurity: derivedRecipientActionAuth
-              ? {
-                  type: derivedRecipientActionAuth,
-                }
-              : undefined,
+            accessAuth: derivedRecipientAccessAuth || undefined,
           },
         }),
-      ),
-      createDocumentAuditLogData({
-        type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_RECIPIENT_COMPLETED,
-        envelopeId: createdEnvelope.id,
-        user: {
-          id: user?.id,
-          name: user?.name,
-          email: directRecipientEmail,
-        },
-        metadata: requestMetadata,
-        data: {
-          recipientEmail: createdDirectRecipient.email,
-          recipientId: createdDirectRecipient.id,
-          recipientName: createdDirectRecipient.name,
-          recipientRole: createdDirectRecipient.role,
-          actionAuth: createdDirectRecipient.authOptions?.actionAuth ?? [],
-        },
-      }),
-    ];
-
-    if (nextSigner) {
-      const pendingRecipients = await tx.recipient.findMany({
-        select: {
-          id: true,
-          signingOrder: true,
-          name: true,
-          email: true,
-          role: true,
-        },
-        where: {
-          envelopeId: createdEnvelope.id,
-          signingStatus: {
-            not: SigningStatus.SIGNED,
-          },
-          role: {
-            not: RecipientRole.CC,
-          },
-        },
-        // Composite sort so our next recipient is always the one with the lowest signing order or id
-        // if there is a tie.
-        orderBy: [{ signingOrder: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }],
-      });
-
-      const nextRecipient = pendingRecipients[0];
-
-      if (nextRecipient) {
-        auditLogsToCreate.push(
+        ...createdDirectRecipientFields.map(({ field, derivedRecipientActionAuth }) =>
           createDocumentAuditLogData({
-            type: DOCUMENT_AUDIT_LOG_TYPE.RECIPIENT_UPDATED,
+            type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_FIELD_INSERTED,
             envelopeId: createdEnvelope.id,
             user: {
-              name: user?.name || directRecipientName || '',
-              email: user?.email || directRecipientEmail,
+              id: user?.id,
+              name: user?.name,
+              email: directRecipientEmail,
             },
             metadata: requestMetadata,
             data: {
-              recipientEmail: nextRecipient.email,
-              recipientName: nextRecipient.name,
-              recipientId: nextRecipient.id,
-              recipientRole: nextRecipient.role,
-              changes: [
-                {
-                  type: RECIPIENT_DIFF_TYPE.NAME,
-                  from: nextRecipient.name,
-                  to: nextSigner.name,
-                },
-                {
-                  type: RECIPIENT_DIFF_TYPE.EMAIL,
-                  from: nextRecipient.email,
-                  to: nextSigner.email,
-                },
-              ],
+              recipientEmail: createdDirectRecipient.email,
+              recipientId: createdDirectRecipient.id,
+              recipientName: createdDirectRecipient.name,
+              recipientRole: createdDirectRecipient.role,
+              fieldId: field.secondaryId,
+              field: match(field.type)
+                .with(FieldType.SIGNATURE, FieldType.FREE_SIGNATURE, (type) => ({
+                  type,
+                  data:
+                    field.signature?.signatureImageAsBase64 ||
+                    field.signature?.typedSignature ||
+                    '',
+                }))
+                .with(
+                  FieldType.DATE,
+                  FieldType.EMAIL,
+                  FieldType.INITIALS,
+                  FieldType.NAME,
+                  FieldType.TEXT,
+                  FieldType.NUMBER,
+                  FieldType.CHECKBOX,
+                  FieldType.DROPDOWN,
+                  FieldType.RADIO,
+                  (type) => ({
+                    type,
+                    data: field.customText,
+                  }),
+                )
+                .exhaustive(),
+              fieldSecurity: derivedRecipientActionAuth
+                ? {
+                    type: derivedRecipientActionAuth,
+                  }
+                : undefined,
             },
           }),
-        );
-
-        await tx.recipient.update({
-          where: { id: nextRecipient.id },
-          data: {
-            sendStatus: SendStatus.SENT,
-            sentAt: new Date(),
-            ...(nextSigner && documentMeta?.allowDictateNextSigner
-              ? {
-                  name: nextSigner.name,
-                  email: nextSigner.email,
-                }
-              : {}),
+        ),
+        createDocumentAuditLogData({
+          type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_RECIPIENT_COMPLETED,
+          envelopeId: createdEnvelope.id,
+          user: {
+            id: user?.id,
+            name: user?.name,
+            email: directRecipientEmail,
           },
+          metadata: requestMetadata,
+          data: {
+            recipientEmail: createdDirectRecipient.email,
+            recipientId: createdDirectRecipient.id,
+            recipientName: createdDirectRecipient.name,
+            recipientRole: createdDirectRecipient.role,
+            actionAuth: createdDirectRecipient.authOptions?.actionAuth ?? [],
+          },
+        }),
+      ];
+
+      if (nextSigner) {
+        const pendingRecipients = await tx.recipient.findMany({
+          select: {
+            id: true,
+            signingOrder: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+          where: {
+            envelopeId: createdEnvelope.id,
+            signingStatus: {
+              not: SigningStatus.SIGNED,
+            },
+            role: {
+              not: RecipientRole.CC,
+            },
+          },
+          // Composite sort so our next recipient is always the one with the lowest signing order or id
+          // if there is a tie.
+          orderBy: [{ signingOrder: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }],
+        });
+
+        const nextRecipient = pendingRecipients[0];
+
+        if (nextRecipient) {
+          auditLogsToCreate.push(
+            createDocumentAuditLogData({
+              type: DOCUMENT_AUDIT_LOG_TYPE.RECIPIENT_UPDATED,
+              envelopeId: createdEnvelope.id,
+              user: {
+                name: user?.name || directRecipientName || '',
+                email: user?.email || directRecipientEmail,
+              },
+              metadata: requestMetadata,
+              data: {
+                recipientEmail: nextRecipient.email,
+                recipientName: nextRecipient.name,
+                recipientId: nextRecipient.id,
+                recipientRole: nextRecipient.role,
+                changes: [
+                  {
+                    type: RECIPIENT_DIFF_TYPE.NAME,
+                    from: nextRecipient.name,
+                    to: nextSigner.name,
+                  },
+                  {
+                    type: RECIPIENT_DIFF_TYPE.EMAIL,
+                    from: nextRecipient.email,
+                    to: nextSigner.email,
+                  },
+                ],
+              },
+            }),
+          );
+
+          await tx.recipient.update({
+            where: { id: nextRecipient.id },
+            data: {
+              sendStatus: SendStatus.SENT,
+              sentAt: new Date(),
+              ...(nextSigner && documentMeta?.allowDictateNextSigner
+                ? {
+                    name: nextSigner.name,
+                    email: nextSigner.email,
+                  }
+                : {}),
+            },
+          });
+        }
+      }
+
+      await tx.documentAuditLog.createMany({
+        data: auditLogsToCreate,
+      });
+
+      const templateAttachments = await tx.envelopeAttachment.findMany({
+        where: {
+          envelopeId: directTemplateEnvelope.id,
+        },
+      });
+
+      if (templateAttachments.length > 0) {
+        await tx.envelopeAttachment.createMany({
+          data: templateAttachments.map((attachment) => ({
+            envelopeId: createdEnvelope.id,
+            type: attachment.type,
+            label: attachment.label,
+            data: attachment.data,
+          })),
         });
       }
-    }
 
-    await tx.documentAuditLog.createMany({
-      data: auditLogsToCreate,
-    });
-
-    const templateAttachments = await tx.envelopeAttachment.findMany({
-      where: {
-        envelopeId: directTemplateEnvelope.id,
-      },
-    });
-
-    if (templateAttachments.length > 0) {
-      await tx.envelopeAttachment.createMany({
-        data: templateAttachments.map((attachment) => ({
-          envelopeId: createdEnvelope.id,
-          type: attachment.type,
-          label: attachment.label,
-          data: attachment.data,
-        })),
-      });
-    }
-
-    return {
-      createdEnvelope,
-      token: createdDirectRecipient.token,
-      recipientId: createdDirectRecipient.id,
-    };
-  });
+      return {
+        createdEnvelope,
+        token: createdDirectRecipient.token,
+        recipientId: createdDirectRecipient.id,
+      };
+    },
+    { timeout: 30_000 },
+  );
 
   const emailSettings = extractDerivedDocumentEmailSettings(documentMeta);
 
-  if (emailSettings.ownerDocumentCreated) {
+  if (emailSettings.ownerDocumentCreated && !IS_DOCUMENSO_OUTBOUND_EMAIL_DISABLED()) {
     await jobs.triggerJob({
       name: 'send.document.created.from.direct.template.email',
       payload: {

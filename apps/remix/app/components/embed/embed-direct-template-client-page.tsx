@@ -44,7 +44,6 @@ import { Label } from '@documenso/ui/primitives/label';
 import { SignaturePadDialog } from '@documenso/ui/primitives/signature-pad/signature-pad-dialog';
 import { useToast } from '@documenso/ui/primitives/use-toast';
 
-import { BrandingLogo } from '~/components/general/branding-logo';
 import PDFViewerLazy from '~/components/general/pdf-viewer/pdf-viewer-lazy';
 import { injectCss } from '~/utils/css-vars';
 
@@ -75,7 +74,7 @@ export const EmbedDirectTemplateClientPage = ({
   recipient,
   fields,
   metadata,
-  hidePoweredBy = false,
+  hidePoweredBy: _hidePoweredBy = false,
   allowWhiteLabelling = false,
 }: EmbedDirectTemplateClientPageProps) => {
   const { _ } = useLingui();
@@ -318,7 +317,6 @@ export const EmbedDirectTemplateClientPage = ({
 
     // !: While the two setters are stable we still want to ensure we're avoiding
     // !: re-renders.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -533,15 +531,6 @@ export const EmbedDirectTemplateClientPage = ({
           onUnsignField={onUnsignField}
         />
       </div>
-
-      {!hidePoweredBy && (
-        <div className="fixed bottom-0 left-0 z-40 rounded-tr bg-primary px-2 py-1 text-xs font-medium text-primary-foreground opacity-60 hover:opacity-100">
-          <span>
-            <Trans>Powered by</Trans>
-          </span>
-          <BrandingLogo className="ml-2 inline-block h-[14px]" />
-        </div>
-      )}
     </div>
   );
 };

@@ -97,6 +97,12 @@ declare namespace NodeJS {
     NEXT_PRIVATE_INNGEST_APP_ID?: string;
     NEXT_PRIVATE_INNGEST_EVENT_KEY?: string;
 
+    /**
+     * Znest fork: optional; read by `IS_DOCUMENSO_OUTBOUND_EMAIL_DISABLED` (currently always suppresses
+     * completion + direct-template owner outbound emails regardless of value).
+     */
+    DOCUMENSO_DISABLE_OUTBOUND_EMAILS?: string;
+
     POSTGRES_URL?: string;
     DATABASE_URL?: string;
     POSTGRES_PRISMA_URL?: string;

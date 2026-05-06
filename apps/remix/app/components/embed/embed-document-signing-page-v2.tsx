@@ -179,14 +179,12 @@ export const EmbedSignDocumentV2ClientPage = ({
 
     // !: While the setters are stable we still want to ensure we're avoiding
     // !: re-renders.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowWhitelabelling]);
 
   useEffect(() => {
     if (hasFinishedInit) {
       onDocumentReady();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasFinishedInit]);
 
   // Listen for document completion events from the envelope signing context

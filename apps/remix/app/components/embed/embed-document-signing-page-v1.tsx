@@ -31,7 +31,6 @@ import { RadioGroup, RadioGroupItem } from '@documenso/ui/primitives/radio-group
 import { SignaturePadDialog } from '@documenso/ui/primitives/signature-pad/signature-pad-dialog';
 import { useToast } from '@documenso/ui/primitives/use-toast';
 
-import { BrandingLogo } from '~/components/general/branding-logo';
 import PDFViewerLazy from '~/components/general/pdf-viewer/pdf-viewer-lazy';
 import { injectCss } from '~/utils/css-vars';
 
@@ -69,7 +68,7 @@ export const EmbedSignDocumentV1ClientPage = ({
   completedFields,
   metadata,
   isCompleted,
-  hidePoweredBy = false,
+  hidePoweredBy: _hidePoweredBy = false,
   allowWhitelabelling = false,
   allRecipients = [],
 }: EmbedSignDocumentV1ClientPageProps) => {
@@ -249,7 +248,6 @@ export const EmbedSignDocumentV1ClientPage = ({
 
     // !: While the two setters are stable we still want to ensure we're avoiding
     // !: re-renders.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -531,15 +529,6 @@ export const EmbedSignDocumentV1ClientPage = ({
           {/* Completed fields */}
           <DocumentReadOnlyFields documentMeta={metadata || undefined} fields={completedFields} />
         </div>
-
-        {!hidePoweredBy && (
-          <div className="fixed bottom-0 left-0 z-40 rounded-tr bg-primary px-2 py-1 text-xs font-medium text-primary-foreground opacity-60 hover:opacity-100">
-            <span>
-              <Trans>Powered by</Trans>
-            </span>
-            <BrandingLogo className="ml-2 inline-block h-[14px]" />
-          </div>
-        )}
       </div>
     </DocumentSigningRecipientProvider>
   );

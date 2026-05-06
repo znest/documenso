@@ -26,7 +26,6 @@ import {
 import { Input } from '@documenso/ui/primitives/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@documenso/ui/primitives/tooltip';
 
-import { useConfigureDocument } from './configure-document-context';
 import type { TConfigureEmbedFormSchema } from './configure-document-view.types';
 
 // Define a type for signer items
@@ -42,7 +41,6 @@ export const ConfigureDocumentRecipients = ({
   isSubmitting,
 }: ConfigureDocumentRecipientsProps) => {
   const { _ } = useLingui();
-  const { isTemplate } = useConfigureDocument();
 
   const $sensorApi = useRef<SensorAPI | null>(null);
 
@@ -145,12 +143,12 @@ export const ConfigureDocumentRecipients = ({
   };
 
   return (
-    <div>
-      <h3 className="text-foreground mb-1 text-lg font-medium">
+    <div className="hidden">
+      <h3 className="mb-1 text-lg font-medium text-foreground">
         <Trans>Recipients</Trans>
       </h3>
 
-      <p className="text-muted-foreground mb-6 text-sm">
+      <p className="mb-6 text-sm text-muted-foreground">
         <Trans>Add signers and configure signing preferences</Trans>
       </p>
 
@@ -206,7 +204,7 @@ export const ConfigureDocumentRecipients = ({
               </FormLabel>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span className="text-muted-foreground ml-1 cursor-help">
+                  <span className="ml-1 cursor-help text-muted-foreground">
                     <HelpCircle className="h-3.5 w-3.5" />
                   </span>
                 </TooltipTrigger>
@@ -249,7 +247,7 @@ export const ConfigureDocumentRecipients = ({
                       {...provided.dragHandleProps}
                       disabled={signer.disabled}
                       className={cn('py-1', {
-                        'bg-widget-foreground pointer-events-none rounded-md pt-2':
+                        'pointer-events-none rounded-md bg-widget-foreground pt-2':
                           snapshot.isDragging,
                       })}
                     >

@@ -283,33 +283,36 @@ export const run = async ({
       newDocumentData.push(result);
     }
 
-    await prisma.$transaction(async (tx) => {
-      for (const { oldDocumentDataId, newDocumentDataId } of newDocumentData) {
-        await tx.envelopeItem.update({
+    await prisma.$transaction(
+      async (tx) => {
+        for (const { oldDocumentDataId, newDocumentDataId } of newDocumentData) {
+          await tx.envelopeItem.update({
+            where: {
+              envelopeId: envelope.id,
+              documentDataId: oldDocumentDataId,
+            },
+            data: {
+              documentDataId: newDocumentDataId,
+            },
+          });
+        }
+
+        await tx.envelope.update({
           where: {
-            envelopeId: envelope.id,
-            documentDataId: oldDocumentDataId,
+            id: envelope.id,
           },
           data: {
-            documentDataId: newDocumentDataId,
+            status: finalEnvelopeStatus,
+            completedAt: new Date(),
           },
         });
-      }
 
-      await tx.envelope.update({
-        where: {
-          id: envelope.id,
-        },
-        data: {
-          status: finalEnvelopeStatus,
-          completedAt: new Date(),
-        },
-      });
-
-      await tx.documentAuditLog.create({
-        data: envelopeCompletedAuditLog,
-      });
-    });
+        await tx.documentAuditLog.create({
+          data: envelopeCompletedAuditLog,
+        });
+      },
+      { timeout: 30_000 },
+    );
 
     return {
       envelopeId: envelope.id,

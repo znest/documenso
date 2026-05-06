@@ -29,7 +29,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: parseInt(process.env.PORT || '3000', 10),
+    port: parseInt(process.env.PORT || '4000', 10),
     strictPort: true,
   },
   plugins: [

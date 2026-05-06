@@ -7,7 +7,10 @@ import { DocumentCreatedFromDirectTemplateEmailTemplate } from '@documenso/email
 import { prisma } from '@documenso/prisma';
 
 import { getI18nInstance } from '../../../client-only/providers/i18n-server';
-import { NEXT_PUBLIC_WEBAPP_URL } from '../../../constants/app';
+import {
+  IS_DOCUMENSO_OUTBOUND_EMAIL_DISABLED,
+  NEXT_PUBLIC_WEBAPP_URL,
+} from '../../../constants/app';
 import { getEmailContext } from '../../../server-only/email/get-email-context';
 import { renderEmailWithI18N } from '../../../utils/render-email-with-i18n';
 import { formatDocumentsPath } from '../../../utils/teams';
@@ -18,6 +21,10 @@ export const run = async ({
 }: {
   payload: TSendDocumentCreatedFromDirectTemplateEmailJobDefinition;
 }) => {
+  if (IS_DOCUMENSO_OUTBOUND_EMAIL_DISABLED()) {
+    return;
+  }
+
   const { envelopeId, recipientId } = payload;
 
   const envelope = await prisma.envelope.findFirst({

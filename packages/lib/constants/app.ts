@@ -4,7 +4,7 @@ export const APP_DOCUMENT_UPLOAD_SIZE_LIMIT =
   Number(env('NEXT_PUBLIC_DOCUMENT_SIZE_UPLOAD_LIMIT')) || 50;
 
 export const NEXT_PUBLIC_WEBAPP_URL = () =>
-  env('NEXT_PUBLIC_WEBAPP_URL') ?? 'http://localhost:3000';
+  env('NEXT_PUBLIC_WEBAPP_URL') ?? 'http://localhost:4000';
 
 export const NEXT_PUBLIC_SIGNING_CONTACT_INFO = () =>
   env('NEXT_PUBLIC_SIGNING_CONTACT_INFO') ?? NEXT_PUBLIC_WEBAPP_URL();
@@ -39,3 +39,15 @@ export const NEXT_PRIVATE_USE_PLAYWRIGHT_PDF = () =>
 
 export const NEXT_PRIVATE_SIGNING_TIMESTAMP_AUTHORITY = () =>
   env('NEXT_PRIVATE_SIGNING_TIMESTAMP_AUTHORITY');
+
+/**
+ * Znest fork: completion and direct-template owner notification emails are always suppressed.
+ * `DOCUMENSO_DISABLE_OUTBOUND_EMAILS` is still read so the flag stays wired; return value is always true.
+ */
+export const IS_DOCUMENSO_OUTBOUND_EMAIL_DISABLED = () => {
+  const fromEnv =
+    env('DOCUMENSO_DISABLE_OUTBOUND_EMAILS') === 'true' ||
+    env('DOCUMENSO_DISABLE_OUTBOUND_EMAILS') === '1';
+  void fromEnv;
+  return true;
+};

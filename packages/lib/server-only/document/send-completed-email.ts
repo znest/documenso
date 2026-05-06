@@ -8,7 +8,7 @@ import { DocumentCompletedEmailTemplate } from '@documenso/email/templates/docum
 import { prisma } from '@documenso/prisma';
 
 import { getI18nInstance } from '../../client-only/providers/i18n-server';
-import { NEXT_PUBLIC_WEBAPP_URL } from '../../constants/app';
+import { IS_DOCUMENSO_OUTBOUND_EMAIL_DISABLED, NEXT_PUBLIC_WEBAPP_URL } from '../../constants/app';
 import { DOCUMENT_AUDIT_LOG_TYPE } from '../../types/document-audit-logs';
 import { extractDerivedDocumentEmailSettings } from '../../types/document-email';
 import type { RequestMetadata } from '../../universal/extract-request-metadata';
@@ -140,20 +140,22 @@ export const sendCompletedEmail = async ({ id, requestMetadata }: SendDocumentOp
 
     const i18n = await getI18nInstance(emailLanguage);
 
-    await mailer.sendMail({
-      to: [
-        {
-          name: owner.name || '',
-          address: owner.email,
-        },
-      ],
-      from: senderEmail,
-      replyTo: replyToEmail,
-      subject: i18n._(msg`Signing Complete!`),
-      html,
-      text,
-      attachments: completedDocumentEmailAttachments,
-    });
+    if (!IS_DOCUMENSO_OUTBOUND_EMAIL_DISABLED()) {
+      await mailer.sendMail({
+        to: [
+          {
+            name: owner.name || '',
+            address: owner.email,
+          },
+        ],
+        from: senderEmail,
+        replyTo: replyToEmail,
+        subject: i18n._(msg`Signing Complete!`),
+        html,
+        text,
+        attachments: completedDocumentEmailAttachments,
+      });
+    }
 
     await prisma.documentAuditLog.create({
       data: createDocumentAuditLogData({
@@ -212,23 +214,25 @@ export const sendCompletedEmail = async ({ id, requestMetadata }: SendDocumentOp
 
       const i18n = await getI18nInstance(emailLanguage);
 
-      await mailer.sendMail({
-        to: [
-          {
-            name: recipient.name,
-            address: recipient.email,
-          },
-        ],
-        from: senderEmail,
-        replyTo: replyToEmail,
-        subject:
-          isDirectTemplate && envelope.documentMeta?.subject
-            ? renderCustomEmailTemplate(envelope.documentMeta.subject, customEmailTemplate)
-            : i18n._(msg`Signing Complete!`),
-        html,
-        text,
-        attachments: completedDocumentEmailAttachments,
-      });
+      if (!IS_DOCUMENSO_OUTBOUND_EMAIL_DISABLED()) {
+        await mailer.sendMail({
+          to: [
+            {
+              name: recipient.name,
+              address: recipient.email,
+            },
+          ],
+          from: senderEmail,
+          replyTo: replyToEmail,
+          subject:
+            isDirectTemplate && envelope.documentMeta?.subject
+              ? renderCustomEmailTemplate(envelope.documentMeta.subject, customEmailTemplate)
+              : i18n._(msg`Signing Complete!`),
+          html,
+          text,
+          attachments: completedDocumentEmailAttachments,
+        });
+      }
 
       await prisma.documentAuditLog.create({
         data: createDocumentAuditLogData({
